@@ -14,6 +14,7 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.gtek.fren.databinding.FragmentHomeBinding
@@ -34,8 +35,8 @@ class HomeFragment : Fragment() {
     private var isDetecting = false
     private var cameraFacing = CameraSelector.DEFAULT_FRONT_CAMERA
     private val TAG = "HomeFragment"
-    private val homeViewModel by lazy {
-        ViewModelProvider(this)[HomeViewModel::class.java]
+    private val homeViewModel: HomeViewModel by viewModels {
+        ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
     }
 
     private val emotionAdapter = EmotionAdapter()
@@ -53,8 +54,15 @@ class HomeFragment : Fragment() {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Initialize OpenCV
-        val isOpenCVInitialized = OpenCVLoader.initDebug()
-        Log.d(TAG, "OpenCV initialized: $isOpenCVInitialized")
+        try {
+            val isOpenCVInitialized = OpenCVLoader.initLocal()
+            if (!isOpenCVInitialized) {
+                Log.e(TAG, "OpenCV initialization failed")
+                return
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing OpenCV: ${e.message}")
+        }
     }
 
     override fun onCreateView(

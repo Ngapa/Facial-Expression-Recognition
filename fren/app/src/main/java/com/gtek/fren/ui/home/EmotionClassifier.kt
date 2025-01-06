@@ -1,6 +1,7 @@
 package com.gtek.fren.ui.home
 
 import android.content.Context
+import android.util.Log
 import com.gtek.fren.executorch.EValue
 import com.gtek.fren.executorch.Module
 import com.gtek.fren.executorch.Tensor
@@ -19,7 +20,12 @@ class EmotionClassifier(private val context: Context) {
     }
 
     init {
-        module = Module.load(getModelPath(MODEL_NAME))
+        try {
+            module = Module.load(getModelPath(MODEL_NAME))
+        } catch (e: Exception) {
+            Log.e("EmotionClassifier", "Error loading model: ${e.message}")
+            throw e
+        }
     }
 
     fun classify(faceImage: Mat): List<EmotionResult> {
