@@ -12,6 +12,13 @@
 #   public *;
 #}
 
+# uncomment this from claude
+-keep class org.opencv.** { *; }
+-keep class com.google.mlkit.** { *; }
+-keepclassmembers class * {
+    native <methods>;
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 #-keepattributes SourceFile,LineNumberTable
