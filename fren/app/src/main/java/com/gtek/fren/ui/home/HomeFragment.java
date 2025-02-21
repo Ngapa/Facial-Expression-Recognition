@@ -3,7 +3,10 @@ package com.gtek.fren.ui.home;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.util.Size;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,15 +28,14 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
+import com.google.android.gms.tasks.Task;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.mlkit.vision.face.FaceDetection;
-import com.google.mlkit.vision.face.FaceDetector;
-import com.google.mlkit.vision.face.FaceDetectorOptions;
 import com.gtek.fren.databinding.FragmentHomeBinding;
+import com.gtek.fren.ui.helper.EmotionAdapter;
+import com.gtek.fren.ui.helper.ImageProcessor;
 
 import org.opencv.android.OpenCVLoader;
 
-import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +52,23 @@ public class HomeFragment extends Fragment {
     private EmotionAdapter emotionAdapter;
     private ProcessCameraProvider cameraProvider;
     private boolean isProcessingImage = false;
+    private boolean isUiSetup = false;
+    private ImageProcessor imageProcessor;
+    private Handler benchmarkHandler;
+    private final Runnable benchmarkRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (homeViewModel != null && homeViewModel.isProcessorReady()) {
+                homeViewModel.logPerformanceMetrics();
+                homeViewModel.resetBenchmark();
+            }
+            // Schedule next run only if Fragment is still active
+            if (isAdded() && !isDetached()) {
+                benchmarkHandler.postDelayed(this, 500);
+            }
+        }
+    };
+
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
@@ -86,9 +105,12 @@ public class HomeFragment extends Fragment {
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
+        HomeViewModel.HomeViewModelFactory factory = new HomeViewModel.HomeViewModelFactory(requireActivity().getApplication());
+        homeViewModel = new ViewModelProvider(this, factory).get(HomeViewModel.class);
         binding = FragmentHomeBinding.inflate(inflater, container, false);
 
-        // Sembunyikan elemen kamera secara default
+        // Make sure overlay is above PreviewView but initially invisible
+        binding.faceOverlay.setVisibility(View.GONE);
         binding.viewFinder.setVisibility(View.GONE);
         binding.errorView.setVisibility(View.GONE);
         binding.rvEmotions.setVisibility(View.GONE);
@@ -99,12 +121,43 @@ public class HomeFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        homeViewModel = new ViewModelProvider(this).get(HomeViewModel.class);
+        benchmarkHandler = new Handler(Looper.getMainLooper());
         cameraExecutor = Executors.newSingleThreadExecutor();
 
+        binding.faceOverlay.post(() -> {
+            ViewGroup.LayoutParams params = binding.faceOverlay.getLayoutParams();
+            if (params.width <= 0) {
+                params.width = binding.viewFinder.getWidth();
+            }
+            if (params.height <= 0) {
+                params.height = binding.viewFinder.getHeight();
+            }
+            binding.faceOverlay.setLayoutParams(params);
+        });
+
+        binding.viewFinder.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            ViewGroup.LayoutParams params = binding.faceOverlay.getLayoutParams();
+            params.width = right - left;
+            params.height = bottom - top;
+            binding.faceOverlay.setLayoutParams(params);
+        });
+        homeViewModel.isInitialized.observe(getViewLifecycleOwner(), isInitialized -> {
+            if (isInitialized) {
+                homeViewModel.initializeImageProcessor(binding.faceOverlay);
+                startBenchmarkLogging();
+                Log.d(TAG, "ImageProcessor initialized");
+            }
+        });
         homeViewModel.emotionResults.observe(getViewLifecycleOwner(), emotionResults -> {
-            setupUI();
+            if (!isUiSetup) {
+                setupUI();
+                isUiSetup = true;
+            }
             Log.d(TAG, "Emotion results: " + emotionResults);
+            if (emotionResults != null && !emotionResults.isEmpty()) {
+                emotionAdapter.submitList(emotionResults);
+                emotionAdapter.notifyDataSetChanged();
+            }
         });
 
         homeViewModel.processingError.observe(getViewLifecycleOwner(), error -> {
@@ -118,49 +171,17 @@ public class HomeFragment extends Fragment {
         setupButtons();
     }
 
+    private void startBenchmarkLogging() {
+        // Remove any existing callbacks
+        benchmarkHandler.removeCallbacks(benchmarkRunnable);
+        // Start new benchmark logging cycle
+        benchmarkHandler.postDelayed(benchmarkRunnable, 30000);
+    }
 
-//    private void setupObservers() {
-//        // Observe errors
-//        homeViewModel.processingError.observe(getViewLifecycleOwner(), error -> {
-//            if (error != null && !error.isEmpty()) {
-//                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show();
-//            }
-//        });
-//
-//        // Observe emotion results
-//        homeViewModel.emotionResults.observe(getViewLifecycleOwner(), emotions -> {
-//            if (emotions != null) {
-//                emotionAdapter.submitList(emotions);
-//            }
-//        });
-//    }
-
-//    private void initializeViewModel() {
-//        try {
-//            homeViewModel = new ViewModelProvider(this, new ViewModelProvider.Factory() {
-//                @NonNull
-//                @Override
-//                public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-//                    try {
-//                        return (T) new HomeViewModel(requireActivity().getApplication());
-//                    } catch (Exception e) {
-//                        throw new RuntimeException("Failed to create ViewModel", e);
-//                    }
-//                }
-//            }).get(HomeViewModel.class);
-//            setupObservers();
-//        } catch (Exception e) {
-//            Log.e(TAG, "Failed to initialize ViewModel: " + e.getMessage());
-//            showError("Failed to initialize. Please restart the app");
-//        }
-//    }
 
     private void setupUI() {
         try {
             Log.d(TAG, "Setting up UI components");
-            // Hide camera preview and error view initially
-            binding.viewFinder.setVisibility(View.GONE);
-            binding.errorView.setVisibility(View.GONE);
 
             // Setup RecyclerView
             binding.rvEmotions.setLayoutManager(
@@ -170,8 +191,6 @@ public class HomeFragment extends Fragment {
                 emotionAdapter = new EmotionAdapter();
             }
             binding.rvEmotions.setAdapter(emotionAdapter);
-
-            setupButtons();
         } catch (Exception e) {
             Log.e(TAG, "Error in setupUI: " + e.getMessage());
             showError("Error setting up UI");
@@ -202,30 +221,65 @@ public class HomeFragment extends Fragment {
     }
 
     private void startCamera() {
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+        if (!isAdded() || getContext() == null) {
+            return;
+        }
+
+        if (cameraProvider != null) {
+            try {
+                cameraProvider.unbindAll();
+            } catch (Exception e) {
+                Log.e(TAG, "Error unbinding camera uses cases", e);
+            }
+        }
+
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
+                ProcessCameraProvider.getInstance(requireContext());
 
         cameraProviderFuture.addListener(() -> {
             try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(binding.viewFinder.getSurfaceProvider());
-
-                ImageAnalysis imageAnalyzer = new ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build();
-
-                imageAnalyzer.setAnalyzer(cameraExecutor, this::processImage);
-
-                CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
-
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer);
-
+                cameraProvider = cameraProviderFuture.get();
+                bindCameraUseCases();
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Error starting camera: " + e.getMessage(), e);
+                showError("Failed to start camera. Please try again.");
             }
         }, ContextCompat.getMainExecutor(requireContext()));
+    }
+
+    private void bindCameraUseCases() {
+        if (cameraProvider == null) {
+            return;
+        }
+
+        Preview preview = new Preview.Builder()
+                .setTargetRotation(binding.viewFinder.getDisplay().getRotation())
+                .setTargetResolution(new Size(640, 480))
+                .build();
+
+        ImageAnalysis imageAnalyzer = new ImageAnalysis.Builder()
+                .setTargetRotation(binding.viewFinder.getDisplay().getRotation())
+                .setTargetResolution(new Size(640, 480))
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                .build();
+
+        preview.setSurfaceProvider(binding.viewFinder.getSurfaceProvider());
+        imageAnalyzer.setAnalyzer(cameraExecutor, this::processImage);
+
+        try {
+            cameraProvider.unbindAll();
+            cameraProvider.bindToLifecycle(
+                    this,
+                    cameraFacing,
+                    preview,
+                    imageAnalyzer
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "Use case binding failed", e);
+            showError("Camera initialization failed. Please restart the app.");
+            stopDetection();
+        }
     }
 
     private void setupButtons() {
@@ -252,7 +306,7 @@ public class HomeFragment extends Fragment {
             } else if (!isDetecting) {
                 showError("Please start camera first");
             } else {
-                showError("Please wait for current processing to complete");
+                switchCamera();
             }
         });
 
@@ -263,25 +317,37 @@ public class HomeFragment extends Fragment {
     }
 
     private void startDetection() {
+        if (ContextCompat.checkSelfPermission(requireContext(),
+                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            checkAndRequestPermissions();
+            return;
+        }
+
+        if (Boolean.FALSE.equals(homeViewModel.isInitialized.getValue())) {
+            showError("Please wait for initialization to complete");
+            return;
+        }
+
+        if (cameraExecutor == null || cameraExecutor.isShutdown()) {
+            cameraExecutor = Executors.newSingleThreadExecutor();
+        }
+
         isDetecting = true;
         updateButtonStates();
-
-        // Tampilkan elemen kamera dan daftar emosi saat tombol Start ditekan
         binding.viewFinder.setVisibility(View.VISIBLE);
+        binding.faceOverlay.setVisibility(View.VISIBLE);
         binding.rvEmotions.setVisibility(View.VISIBLE);
         binding.errorView.setVisibility(View.GONE);
-
         startCamera();
         homeViewModel.startDetection();
-        Log.d(TAG, "Detection started");
     }
-
     private void stopDetection() {
         isDetecting = false;
         updateButtonStates();
 
         // Sembunyikan elemen kamera dan daftar emosi saat tombol Stop ditekan
         binding.viewFinder.setVisibility(View.GONE);
+        binding.faceOverlay.setVisibility(View.GONE);
         binding.rvEmotions.setVisibility(View.GONE);
 
         if (cameraProvider != null) {
@@ -289,6 +355,7 @@ public class HomeFragment extends Fragment {
         }
         homeViewModel.stopDetection();
         Log.d(TAG, "Detection stopped");
+        shutdownCameraExecutor();
     }
 
     private void setCameraButtonStates(boolean startEnabled, boolean stopEnabled, boolean switchEnabled) {
@@ -308,42 +375,59 @@ public class HomeFragment extends Fragment {
 
 
     private void checkAndRequestPermissions() {
-        String[] permissions = {
-                Manifest.permission.CAMERA
-        };
-
         if (ContextCompat.checkSelfPermission(requireContext(),
                 Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissionLauncher.launch(Arrays.toString(permissions));
+            requestPermissionLauncher.launch(Manifest.permission.CAMERA);
         }
     }
 
 
+    private final Object processingLock = new Object();
     @OptIn(markerClass = ExperimentalGetImage.class)
     private void processImage(ImageProxy imageProxy) {
-        if (!isDetecting || isProcessingImage || imageProxy == null || imageProxy.getImage() == null) {
-            if (imageProxy != null) {
-                imageProxy.close();
-            }
+        if (!isDetecting) {
+            imageProxy.close();
             return;
         }
 
-        isProcessingImage = true;
+        synchronized (processingLock) {
+            if (isProcessingImage) {
+                imageProxy.close();
+                return;
+            }
+            isProcessingImage = true;
+        }
 
-        FaceDetectorOptions options = new FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-                .build();
-
-        FaceDetector detector = FaceDetection.getClient(options);
         try {
-            homeViewModel.processImageWithFaceDetection(imageProxy, detector);
+            if (homeViewModel != null) {
+                // Pass the image to ViewModel and wait for processing to complete
+                Task<Void> task = homeViewModel.processImageWithFaceDetection(imageProxy);
+                task.addOnCompleteListener(completeTask -> {
+                    synchronized (processingLock) {
+                        isProcessingImage = false;
+                    }
+                    // No need to close imageProxy here, it's handled in ViewModel
+                    if (!completeTask.isSuccessful()) {
+                        Exception e = completeTask.getException();
+                        Log.e(TAG, "Error processing image: " + e.getMessage(), e);
+                        showError("Error processing image. Please restart detection.");
+                        stopDetection();
+                    }
+                });
+            } else {
+                synchronized (processingLock) {
+                    isProcessingImage = false;
+                }
+                imageProxy.close();
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error processing image: " + e.getMessage(), e);
+            showError("Error processing image. Please restart detection.");
+            synchronized (processingLock) {
+                isProcessingImage = false;
+            }
             imageProxy.close();
-        } finally {
-            isProcessingImage = false;
+            stopDetection();
         }
     }
 
@@ -374,19 +458,6 @@ public class HomeFragment extends Fragment {
         }
     }
 
-
-//    private void retryCamera() {
-//        if (isAdded()) {
-//            requireActivity().runOnUiThread(() -> {
-//                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-//                    if (isAdded() && !isDetecting) {
-//                        startCamera();
-//                    }
-//                }, 1000);
-//            });
-//        }
-//    }
-
     @Override
     public void onResume() {
         super.onResume();
@@ -407,20 +478,48 @@ public class HomeFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if (cameraProvider != null) {
-            cameraProvider.unbindAll();
+        if (benchmarkHandler != null) {
+            benchmarkHandler.removeCallbacks(benchmarkRunnable);
         }
-        if (cameraExecutor != null && !cameraExecutor.isShutdown()) {
-            cameraExecutor.shutdown();
+        if (isDetecting) {
+            stopDetection();
+        }
+
+        if (cameraProvider != null) {
             try {
-                if (!cameraExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                cameraProvider.unbindAll();
+            } catch (Exception e) {
+                Log.e(TAG, "Error unbinding camera", e);
+            }
+        }
+
+        if (cameraExecutor != null && !cameraExecutor.isShutdown()) {
+            try {
+                cameraExecutor.shutdown();
+                if (!cameraExecutor.awaitTermination(1000, TimeUnit.MILLISECONDS)) {
                     cameraExecutor.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 cameraExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
         }
         binding = null;
     }
 
+    private void shutdownCameraExecutor() {
+        if (cameraExecutor != null) {
+            cameraExecutor.shutdown();
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        benchmarkHandler = null;
+        if (homeViewModel != null) {
+            homeViewModel.cleanup(); // Add cleanup method in ViewModel
+        }
+    }
 }
+

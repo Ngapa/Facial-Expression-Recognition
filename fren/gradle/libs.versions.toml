@@ -17,6 +17,8 @@ mlkit-face = "16.1.7"
 opencv = "4.10.0"
 soloader = "0.11.0"
 fbjni = "0.7.0"
+tflite = "2.9.0"
+tflite-support = "0.4.2"
 compose-bom = "2024.10.01"
 
 [libraries]
@@ -42,6 +44,9 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkit-face" }
 opencv = { group = "org.opencv", name = "opencv", version.ref = "opencv"}
+
+tensorflow-lite = {group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite"}
+tensorflow-lite-support = {group = "org.tensorflow", name = "tensorflow-lite-support", version.ref = "tflite-support"}
 
 soloader = { group = "com.facebook.soloader", name = "soloader", version.ref = "soloader"}
 fbjni = { group = "com.facebook.fbjni", name = "fbjni", version.ref = "fbjni"}

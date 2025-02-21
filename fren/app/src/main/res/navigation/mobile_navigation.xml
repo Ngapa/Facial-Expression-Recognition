@@ -3,7 +3,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/mobile_navigation"
-    app:startDestination="@+id/nav_home">
+    app:startDestination="@+id/nav_emotion_analysis">
+
+    <fragment
+        android:id="@+id/nav_emotion_analysis"
+        android:name="com.gtek.fren.ui.emotion.EmotionAnalysisFragment"
+        android:label="@string/emotion_analysis"
+        tools:layout="@layout/fragment_emotion_analysis" />
 
     <fragment
         android:id="@+id/nav_home"
@@ -22,4 +28,6 @@
         android:name="com.gtek.fren.ui.slideshow.SlideshowFragment"
         android:label="@string/menu_slideshow"
         tools:layout="@layout/fragment_slideshow" />
+
+
 </navigation>

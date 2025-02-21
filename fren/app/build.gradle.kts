@@ -21,7 +21,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += ""
-//                arguments("-DANDROID_STL=c++_shared")
+                arguments("-DANDROID_STL=c++_shared")
             }
         }
     }
@@ -60,6 +60,7 @@ android {
         jniLibs {
             useLegacyPackaging = true
             pickFirsts.add("lib/*/libc++_shared.so")
+            pickFirsts.add("lib/*/libexecutorch.so")
         }
     }
 
@@ -93,8 +94,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("org.opencv:opencv:4.10.0")
+    implementation("org.tensorflow:tensorflow-lite:2.9.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.2")
     implementation("com.facebook.soloader:soloader:0.11.0")
-    implementation("com.facebook.fbjni:fbjni:0.7.0")
+    implementation("com.facebook.fbjni:fbjni:0.5.1")
 
 
     testImplementation("junit:junit:4.13.2")
