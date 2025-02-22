@@ -1,4 +1,4 @@
-package com.gtek.fren.ui.emotion;
+package com.gtek.fren.ui.emotionanalysis;
 
 import android.app.Application;
 import android.util.Log;
@@ -35,7 +35,12 @@ public class EmotionAnalysisViewModel extends AndroidViewModel {
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
     private EmotionClassifier emotionClassifier;
     private final EmotionBenchmark benchmark;
+    private final MutableLiveData<EmotionBenchmark.BenchmarkMetrics> _benchmarkMetrics = new MutableLiveData<>();
+    public LiveData<EmotionBenchmark.BenchmarkMetrics> benchmarkMetrics = _benchmarkMetrics;
 
+    public EmotionBenchmark getBenchmark() {
+        return benchmark;
+    }
     public void setEmotionResults(List<EmotionClassifier.EmotionResult> results) {
         _emotionResults.postValue(results);
     }
@@ -87,10 +92,11 @@ public class EmotionAnalysisViewModel extends AndroidViewModel {
 
         try {
             if (emotionClassifier != null) {
-                benchmark.startDetection();
+                benchmark.startEvaluation();
                 List<EmotionClassifier.EmotionResult> results = emotionClassifier.classify(imageMat);
-                benchmark.endDetection();
+                benchmark.endEvaluation();
 
+                // Jika Anda memiliki ground truth untuk evaluasi akurasi
                 if (results != null && !results.isEmpty()) {
                     _emotionResults.postValue(results);
                     return results;
@@ -105,11 +111,8 @@ public class EmotionAnalysisViewModel extends AndroidViewModel {
     }
 
     public void logPerformanceMetrics() {
-        benchmark.logMetrics();
-    }
-
-    public void resetBenchmark() {
-        benchmark.reset();
+        benchmark.logDetailedMetrics();
+        _benchmarkMetrics.postValue(benchmark.getDetailedMetrics());
     }
 
     @Override

@@ -7,27 +7,26 @@
 
     <fragment
         android:id="@+id/nav_emotion_analysis"
-        android:name="com.gtek.fren.ui.emotion.EmotionAnalysisFragment"
+        android:name="com.gtek.fren.ui.emotionanalysis.EmotionAnalysisFragment"
         android:label="@string/emotion_analysis"
         tools:layout="@layout/fragment_emotion_analysis" />
 
     <fragment
-        android:id="@+id/nav_home"
-        android:name="com.gtek.fren.ui.home.HomeFragment"
-        android:label="@string/menu_home"
-        tools:layout="@layout/fragment_home" />
+        android:id="@+id/nav_about"
+        android:name="com.gtek.fren.ui.about.AboutFragment"
+        android:label="@string/about_app"
+        tools:layout="@layout/fragment_about" />
 
     <fragment
-        android:id="@+id/nav_gallery"
-        android:name="com.gtek.fren.ui.gallery.GalleryFragment"
-        android:label="@string/menu_gallery"
-        tools:layout="@layout/fragment_gallery" />
+        android:id="@+id/nav_about_emotion"
+        android:name="com.gtek.fren.ui.aboutemotion.AboutEmotionFragment"
+        android:label="@string/about_emotion"
+        tools:layout="@layout/fragment_about_emotion" />
 
     <fragment
-        android:id="@+id/nav_slideshow"
-        android:name="com.gtek.fren.ui.slideshow.SlideshowFragment"
-        android:label="@string/menu_slideshow"
-        tools:layout="@layout/fragment_slideshow" />
-
+        android:id="@+id/nav_privacy_policy"
+        android:name="com.gtek.fren.ui.privacypolicy.PrivacyPolicyFragment"
+        android:label="@string/privacy_policy"
+        tools:layout="@layout/fragment_privacy_policy" />
 
 </navigation>

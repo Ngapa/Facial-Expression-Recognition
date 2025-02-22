@@ -1,4 +1,4 @@
-package com.gtek.fren.ui.emotion;
+package com.gtek.fren.ui.emotionanalysis;
 
 import android.Manifest;
 import android.content.Intent;
@@ -38,6 +38,7 @@ import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
 import com.gtek.fren.databinding.FragmentEmotionAnalysisBinding;
 import com.gtek.fren.ui.helper.EmotionAdapter;
+import com.gtek.fren.ui.helper.EmotionBenchmark;
 import com.gtek.fren.ui.helper.EmotionClassifier;
 
 import org.opencv.android.Utils;
@@ -64,6 +65,7 @@ public class EmotionAnalysisFragment extends Fragment {
     private Uri photoUri;
     private static final String TAG = "EmotionAnalysis";
     private Handler benchmarkHandler;
+
 
     private EmotionAdapter emotionAdapter;
 
@@ -167,12 +169,55 @@ public class EmotionAnalysisFragment extends Fragment {
             }
         });
 
+        viewModel.benchmarkMetrics.observe(getViewLifecycleOwner(), metrics -> {
+            if (metrics != null) {
+                updateBenchmarkDisplay(metrics);
+            }
+        });
+
         // Observe errors
         viewModel.error.observe(getViewLifecycleOwner(), error -> {
             if (error != null && !error.isEmpty()) {
                 showError(error);
             }
         });
+    }
+
+    private void updateBenchmarkDisplay(EmotionBenchmark.BenchmarkMetrics metrics) {
+        // Processing Time Display
+        binding.processingTimeText.setText(String.format(Locale.US,
+                "Average: %.2f ms\n" +
+                        "Standard Deviation: ±%.2f ms\n" +
+                        "Total Frames: %d",
+                metrics.avgProcessingTime,
+                metrics.stdDevProcessingTime,
+                metrics.framesProcessed));
+
+        // Memory Usage Display
+        binding.memoryUsageText.setText(String.format(Locale.US,
+                "Current: %.2f MB\n" +
+                        "Peak: %.2f MB\n" +
+                        "Average: %.2f MB",
+                metrics.avgMemoryUsage,
+                metrics.peakMemoryUsage,
+                metrics.avgMemoryUsage));
+
+        // CPU Usage Display
+        binding.cpuUsageText.setText(String.format(Locale.US,
+                "Current Usage: %.2f%%\n" +
+                        "Threads: %d",
+                metrics.cpuUsage,
+                Thread.activeCount()));
+
+        // Accuracy Display
+        binding.accuracyText.setText(String.format(Locale.US,
+                "Overall: %.2f%%\n" +
+                        "Correct/Total: %d/%d\n" +
+                        "Error Rate: %.2f%%",
+                metrics.accuracy,
+                metrics.correctPredictions,
+                metrics.totalPredictions,
+                100 - metrics.accuracy));
     }
 
     private void checkCameraPermission() {
@@ -225,6 +270,7 @@ public class EmotionAnalysisFragment extends Fragment {
 
     private void analyzeImage() {
         try {
+
             Log.d(TAG, "Starting image analysis");
             InputStream inputStream = requireActivity().getContentResolver().openInputStream(photoUri);
             Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
@@ -232,7 +278,7 @@ public class EmotionAnalysisFragment extends Fragment {
                 showError("Failed to load image");
                 return;
             }
-
+            viewModel.getBenchmark().startEvaluation();
             // Handle rotation
             int rotation = getImageRotation(photoUri);
             if (rotation != 0) {
@@ -287,6 +333,7 @@ public class EmotionAnalysisFragment extends Fragment {
                             showNoFacesDetected();
                             imageMat.release();
                             grayMat.release();
+                            viewModel.getBenchmark().endEvaluation();
                             return;
                         }
 
@@ -308,6 +355,7 @@ public class EmotionAnalysisFragment extends Fragment {
 
                         for (Face face : faces) {
                             android.graphics.Rect bounds = face.getBoundingBox();
+                            viewModel.logPerformanceMetrics();
 
                             // Ensure bounds are within image dimensions
                             bounds.left = Math.max(0, bounds.left);
@@ -358,6 +406,7 @@ public class EmotionAnalysisFragment extends Fragment {
                                     allResults = new ArrayList<>(emotions);
                                     viewModel.setEmotionResults(allResults);
 
+
                                     // Debug log
                                     Log.d(TAG, "Added emotion to results: " + topEmotion.getEmotion() +
                                             " with confidence: " + topEmotion.getConfidence());
@@ -372,20 +421,25 @@ public class EmotionAnalysisFragment extends Fragment {
                         binding.imagePreview.setImageBitmap(mutableBitmap);
                         imageMat.release();
                         grayMat.release();
+                        viewModel.getBenchmark().endEvaluation();
+                        viewModel.logPerformanceMetrics();
                     })
                     .addOnFailureListener(e -> {
                         Log.e(TAG, "Face detection failed: " + e.getMessage());
                         showError("Face detection failed: " + e.getMessage());
                         imageMat.release();
                         grayMat.release();
+                        viewModel.getBenchmark().endEvaluation();
                     });
 
         } catch (IOException e) {
             Log.e(TAG, "IO Error: " + e.getMessage());
             showError("IO Error: " + e.getMessage());
+            viewModel.getBenchmark().endEvaluation();
         } catch (Exception e) {
             Log.e(TAG, "Error: " + e.getMessage());
             showError("Error: " + e.getMessage());
+            viewModel.getBenchmark().endEvaluation();
         }
     }
 

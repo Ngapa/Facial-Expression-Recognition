@@ -114,7 +114,7 @@ public class ImageProcessor {
         }
 
         try {
-            benchmark.startDetection();
+
             Image mediaImage = imageProxy.getImage();
             if (mediaImage == null) {
                 throw new IllegalArgumentException("Received null mediaImage");
@@ -122,46 +122,49 @@ public class ImageProcessor {
 
             InputImage inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
 
-            // Store width and height before image processing
+
             final int width = mediaImage.getWidth();
             final int height = mediaImage.getHeight();
-
-            // Convert image to Mat before face detection
             final Mat imageMat = imageToMat(mediaImage);
 
             if (imageMat == null) {
                 throw new IllegalStateException("Failed to convert image to Mat");
             }
 
+
             faceDetector.process(inputImage)
                     .addOnSuccessListener(faces -> {
                         lastProcessingTime = System.currentTimeMillis();
                         if (!faces.isEmpty()) {
-                            long startClassification = System.nanoTime();
+
                             drawFacesOnOverlay(faces, width, height);
-                            // Process faces using the pre-converted Mat
                             List<EmotionClassifier.EmotionResult> allEmotions = new ArrayList<>();
+
+                            // Process each face and measure performance
                             for (Face face : faces) {
                                 try {
                                     List<EmotionClassifier.EmotionResult> faceEmotions = processSingleFace(face, imageMat);
-                                    allEmotions.addAll(faceEmotions);
+                                    if (faceEmotions != null && !faceEmotions.isEmpty()) {
+                                        allEmotions.addAll(faceEmotions);
+                                        // Record successful emotion detection
+                                    }
                                 } catch (Exception e) {
                                     Log.e(TAG, "Error processing face", e);
+
                                 }
                             }
-                            benchmark.recordClassificationTime(startClassification, System.nanoTime());
-                            benchmark.recordSuccess();
+
                             emotionResults.postValue(allEmotions);
+
                         } else {
                             clearOverlay();
                             emotionResults.postValue(new ArrayList<>());
                         }
-                        benchmark.endDetection();
+
                     })
                     .addOnFailureListener(e -> {
                         String errorMessage = "Face detection failed: " + e.getMessage();
                         Log.e(TAG, errorMessage, e);
-                        benchmark.recordFailure();
                         processingError.postValue(errorMessage);
                         clearOverlay();
                     })
@@ -169,6 +172,7 @@ public class ImageProcessor {
                         if (!imageMat.empty()) {
                             imageMat.release();
                         }
+
                         Log.d(TAG, "Complete process image");
                         imageProxy.close();
                         synchronized(lock) {
@@ -179,21 +183,11 @@ public class ImageProcessor {
         } catch (Exception e) {
             Log.e(TAG, "Error processing image", e);
             processingError.postValue("Error processing image: " + e.getMessage());
-            benchmark.recordFailure();
             imageProxy.close();
             synchronized(lock) {
                 isProcessing = false;
             }
         }
-    }
-
-    public void logPerformanceMetrics() {
-        benchmark.logMetrics();
-    }
-
-    // Reset benchmark
-    public void resetBenchmark() {
-        benchmark.reset();
     }
 
 
