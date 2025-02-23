@@ -65,6 +65,7 @@ public class EmotionAnalysisFragment extends Fragment {
     private Uri photoUri;
     private static final String TAG = "EmotionAnalysis";
     private Handler benchmarkHandler;
+    EmotionBenchmark emotionBenchmark;
 
 
     private EmotionAdapter emotionAdapter;
@@ -110,6 +111,7 @@ public class EmotionAnalysisFragment extends Fragment {
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         emotionAdapter = new EmotionAdapter();
+        emotionBenchmark = new EmotionBenchmark();
     }
 
 
@@ -138,6 +140,13 @@ public class EmotionAnalysisFragment extends Fragment {
         binding.uploadButton.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
             imagePickerLauncher.launch(intent);
+
+            if (emotionBenchmark != null) {
+                emotionBenchmark.reset();
+            }
+
+            //TODO
+            //Clear resultList when uploading a new image
         });
 
         binding.cameraButton.setOnClickListener(v -> checkCameraPermission());

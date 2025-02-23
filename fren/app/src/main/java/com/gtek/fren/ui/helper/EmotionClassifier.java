@@ -23,11 +23,13 @@ import java.util.Locale;
 public class EmotionClassifier {
 
     private static final String TAG = "EmotionClassifier";
-    private static final String MODEL_NAME = "cnnresnet.tflite";
+    public static final String MODEL_CNN_RESNET = "cnnresnet.tflite";
+    public static final String MODEL_KAN_RESNET = "kanresnet.tflite";
+    private static String currentModel = MODEL_CNN_RESNET;
     private static final String[] EMOTION_CLASSES = {
             "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"
     };
-    private final Interpreter interpreter;
+    private Interpreter interpreter;
     private static Context context;
 
     static {
@@ -49,29 +51,55 @@ public class EmotionClassifier {
         }
 
         try {
-            String modelPath = assetFilePath(context, MODEL_NAME);
-            if (modelPath != null) {
-                File modelFile = new File(modelPath);
-                Interpreter.Options options = new Interpreter.Options();
-                interpreter = new Interpreter(modelFile, options);
-
-                Log.d(TAG, "Model loaded successfully");
-                Log.d(TAG, "Model path: " + modelPath);
-                Log.d(TAG, "Model file exists: " + modelFile.exists());
-                Log.d(TAG, "Model file size: " + modelFile.length() + " bytes");
-
-                // Verify model with dummy input
-                float[][][][] dummyInput = new float[1][48][48][1];
-                float[][] dummyOutput = new float[1][7];
-                interpreter.run(dummyInput, dummyOutput);
-
-                Log.d(TAG, "Model verification successful");
-            } else {
-                throw new RuntimeException("Error loading model file from assets");
-            }
+            // Load model default (CNN ResNet)
+            loadModel(MODEL_CNN_RESNET);
         } catch (IOException e) {
             Log.e(TAG, "Error loading model: " + e.getMessage());
             throw new RuntimeException("Failed to load TFLite model", e);
+        }
+    }
+
+    // Method untuk mengganti model
+    public void switchModel(String modelName) throws IOException {
+        if (!modelName.equals(currentModel)) {
+            loadModel(modelName);
+        }
+    }
+
+    // Method untuk mendapatkan nama model saat ini
+    public String getCurrentModel() {
+        return currentModel;
+    }
+
+    // Method untuk loading model
+    private void loadModel(String modelName) throws IOException {
+        String modelPath = assetFilePath(context, modelName);
+        if (modelPath != null) {
+            File modelFile = new File(modelPath);
+            Interpreter.Options options = new Interpreter.Options();
+
+            // Tutup interpreter yang ada jika sudah ada
+            if (interpreter != null) {
+                interpreter.close();
+            }
+
+            interpreter = new Interpreter(modelFile, options);
+
+            Log.d(TAG, "Model loaded successfully");
+            Log.d(TAG, "Model name: " + modelName);
+            Log.d(TAG, "Model path: " + modelPath);
+            Log.d(TAG, "Model file exists: " + modelFile.exists());
+            Log.d(TAG, "Model file size: " + modelFile.length() + " bytes");
+
+            // Verify model with dummy input
+            float[][][][] dummyInput = new float[1][48][48][1];
+            float[][] dummyOutput = new float[1][7];
+            interpreter.run(dummyInput, dummyOutput);
+
+            Log.d(TAG, "Model verification successful");
+            currentModel = modelName;
+        } else {
+            throw new RuntimeException("Error loading model file from assets");
         }
     }
 

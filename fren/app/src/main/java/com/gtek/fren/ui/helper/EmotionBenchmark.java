@@ -107,7 +107,7 @@ public class EmotionBenchmark {
                 avgProcessingTime,
                 stdDevProcessingTime,
                 frameCount,
-                cpuUsage * 100,
+                cpuUsage,
                 avgMemoryUsage,
                 peakMemoryUsage / (1024.0 * 1024.0),
                 accuracy,
